@@ -465,7 +465,7 @@ class Controller:
             fields = dict(re.findall(r"(?m)^\s*(\w+)=(true|false)\s*$", block[1])) if block else {}
             if fields.get("showing") == "false":
                 return False
-            if all(fields.get(k) == v for k, v in (("showing", "true"), ("secure", "true"), ("occluded", "false"))):
+            if fields.get("showing") == "true" and fields.get("occluded") == "false":
                 return True
             raise APIError(502, "LOCK_STATE_UNKNOWN", "无法确认安全锁屏状态")
 
