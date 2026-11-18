@@ -39,7 +39,9 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-容器名为 `wechat-checkin`，默认绑定宿主机 `127.0.0.1:8000`。用户自行配置 Nginx 等反向代理，通过 HTTPS 访问管理端。
+镜像名为 `wecom-checkin:1.0`，容器名为 `wechat-checkin`，默认绑定宿主机 `127.0.0.1:8000`。用户自行配置 Nginx 等反向代理，通过 HTTPS 访问管理端。
+
+已有部署首次切换到此镜像标签时，在 `manager/` 目录执行 `docker compose up -d --build manager`，构建镜像并重建容器。
 
 镜像只安装 Python 运行依赖，将当前 `manager/` 目录映射到容器 `/app`。代码、页面和资源直接使用宿主文件，运行数据保存在宿主 `manager/data/`。运行一个管理端实例即可。
 

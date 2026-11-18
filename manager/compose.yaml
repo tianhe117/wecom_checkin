@@ -1,6 +1,7 @@
 services:
   manager:
     build: .
+    image: wecom-checkin:1.0
     container_name: wechat-checkin
     restart: unless-stopped
     ports:
