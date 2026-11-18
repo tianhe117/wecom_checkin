@@ -7,6 +7,7 @@
   const status = dialog.querySelector('.confirmation-status');
   const cancel = dialog.querySelector('[data-confirmation-cancel]');
   const confirm = form.querySelector('button[type="submit"]');
+  let label = '确认打卡';
   let challenge = null;
   let sourceForm = null;
   let picked = '';
@@ -74,7 +75,7 @@
       button.setAttribute('aria-label', `数字 ${digit}`);
       keypad.append(button);
     }
-    message(payload.error || '完成点选后可确认打卡', Boolean(payload.error));
+    message(payload.error || '完成点选后可' + label, Boolean(payload.error));
     update();
   }
 
@@ -83,6 +84,10 @@
     await cancelling;
     if (dialog.open) return;
     sourceForm = source;
+    form.elements.kind.value = source.elements.kind.value;
+    const clearing = form.elements.kind.value === 'clear_records';
+    label = clearing ? '确认清空' : '确认打卡';
+    dialog.querySelector('h2').textContent = clearing ? '清空所有日期的记录和截图' : label;
     const current = ++generation;
     challenge = null;
     picked = '';
@@ -94,7 +99,7 @@
     keypad.replaceChildren();
     confirm.disabled = true;
     cancel.disabled = false;
-    confirm.textContent = '确认打卡';
+    confirm.textContent = label;
     message('正在准备确认…');
     dialog.showModal();
     try {
@@ -113,7 +118,7 @@
     const source = event.target;
     if (source === form || !(source instanceof HTMLFormElement)) return;
     if (new URL(source.action, window.location.href).pathname !== new URL(form.action).pathname) return;
-    if (source.elements.kind?.value !== 'full') return;
+    if (!['full', 'clear_records'].includes(source.elements.kind?.value)) return;
     event.preventDefault();
     open(source);
   });
@@ -123,7 +128,7 @@
     if (!button || button.disabled || !challenge || submitting) return;
     if (button.dataset.digit === challenge.sequence[picked.length]) {
       picked += button.dataset.digit;
-      message(picked.length === 6 ? '点选完成，请确认打卡' : `已完成 ${picked.length}/6`);
+      message(picked.length === 6 ? '点选完成，请' + label : `已完成 ${picked.length}/6`);
     } else {
       picked = '';
       message('顺序不正确，请从第一个数字重新点选。', true);
@@ -144,12 +149,12 @@
       if (payload.redirect) { window.location.assign(payload.redirect); return; }
       submitting = false;
       cancel.disabled = false;
-      confirm.textContent = '确认打卡';
+      confirm.textContent = label;
       showChallenge(payload);
     } catch (error) {
       submitting = false;
       cancel.disabled = false;
-      confirm.textContent = '确认打卡';
+      confirm.textContent = label;
       message(error.message || '提交失败，请重试。', true);
       update();
     }

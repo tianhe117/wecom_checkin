@@ -271,6 +271,34 @@ def create_app(directory=None, *, store=None, service=None, secure_cookie=True):
                                active="calendar" if tab == "schedule" else "settings", back=url_for("plans_page") if tab == "schedule" else None,
                                refresh=2 if tab == "device" and request.args.get("check") == "1" and not store.get("_device_state", {}) else None)
 
+    def delete_records(run_id=None):
+        with store.connect(write=True) as db:
+            query = "SELECT id FROM runs WHERE status NOT IN ('queued','running') AND bark_status NOT IN ('pending','sending')"
+            if run_id is not None:
+                query += " AND id=?"
+            params = (run_id,) if run_id is not None else ()
+            # Older databases retain optional links from retries and plan change history.
+            for table, column in (("runs", "retry_of"), ("plan_changes", "run_id")):
+                if any(field["name"] == column for field in db.execute(f"PRAGMA table_info({table})")):
+                    db.execute(f"UPDATE {table} SET {column}=NULL WHERE {column} IN ({query})", params)
+            rows = db.execute(f"DELETE FROM runs WHERE id IN ({query}) RETURNING screenshot", params).fetchall()
+            remaining = db.execute("SELECT count(*) FROM runs").fetchone()[0]
+        for row in rows:
+            if row["screenshot"]:
+                path = (store.screenshots / row["screenshot"]).resolve()
+                if not path.is_relative_to(store.screenshots) or path == store.screenshots:
+                    continue
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    app.logger.exception("删除记录截图失败")
+        flash(f"已删除 {len(rows)} 条记录" + (f"，{remaining} 条任务或通知尚未结束" if run_id is None and remaining else ""))
+
+    @app.post("/runs/<run_id>/delete")
+    def delete_run(run_id):
+        delete_records(run_id)
+        return redirect(url_for("runs_page"), code=303)
+
     @app.post("/runs")
     def run_create():
         wants_json = request.accept_mimetypes.best == "application/json"
@@ -284,32 +312,36 @@ def create_app(directory=None, *, store=None, service=None, secure_cookie=True):
                 raise ValueError("请求已过期，请刷新页面")
             kind = request.form.get("kind", "full")
             confirmations = None
-            if kind == "full":
+            if kind in {"full", "clear_records"}:
+                clearing = kind == "clear_records"
+                session_key = "clear_confirmations" if clearing else "run_confirmations"
                 if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", token):
                     raise ValueError("请求已过期，请刷新页面")
-                confirmations = session.get("run_confirmations", {})
+                confirmations = session.get(session_key, {})
                 question = confirmations.get(token)
                 if question and "sequence" not in question:
                     question = None  # Replace pending confirmations from the old arithmetic UI.
                     confirmations.pop(token, None)
                 if request.form.get("action") == "cancel":
                     confirmations.pop(token, None)
-                    session["run_confirmations"] = confirmations
+                    session[session_key] = confirmations
                     return {"cancelled": True} if wants_json else navigate(question["back"] if question else url_for("overview"))
                 # Repeated submissions return the original task after its challenge was consumed.
                 with store.connect() as db:
                     previous = db.execute("SELECT id FROM runs WHERE request_id=?", (token,)).fetchone()
-                if previous:
+                if previous and not clearing:
                     confirmations.pop(token, None)
-                    session["run_confirmations"] = confirmations
+                    session[session_key] = confirmations
                     return navigate(url_for("run_detail", run_id=previous["id"]))
-                if not controller_configured(store.settings()):
+                if not clearing and not controller_configured(store.settings()):
                     raise ValueError("请先在设备设置中填写控制端地址和密钥")
                 if not question or request.form.get("answer", "") != question["sequence"]:
                     if not question:
                         back = request.form.get("return_to", "")
                         if back != "/" and not re.fullmatch(r"/runs/[a-f0-9]{24}", back):
                             back = url_for("overview")
+                        if clearing:
+                            back = url_for("runs_page")
                         rng = secrets.SystemRandom()
                         question = {"sequence": "".join(rng.sample("123456789", 6)),
                                     "grid": rng.sample("123456789", 9), "back": back}
@@ -317,18 +349,23 @@ def create_app(directory=None, *, store=None, service=None, secure_cookie=True):
                         if len(confirmations) >= 8:
                             confirmations.pop(next(iter(confirmations)))
                         confirmations[token] = question
-                    session["run_confirmations"] = confirmations
+                    session[session_key] = confirmations
                     error = "点选顺序不正确，请重新点选。" if "answer" in request.form else ""
                     payload = {"confirmation": {"request_id": token, "sequence": question["sequence"], "grid": question["grid"]}, "error": error}
                     status = 400 if error else 200
                     if wants_json:
                         return payload, status
-                    return render_template("confirm-run.html", title="确认打卡", subtitle="请按顺序点击 6 个数字",
+                    return render_template("confirm-run.html", title="清空记录" if clearing else "确认打卡", kind=kind, subtitle="请按顺序点击 6 个数字",
                                            confirmation=payload, operation_id=token, return_to=question["back"]), status
+                if clearing:
+                    confirmations.pop(token)
+                    session[session_key] = confirmations
+                    delete_records()
+                    return navigate(url_for("runs_page"))
             identifier = service.submit(kind, token)
             if confirmations is not None:
                 confirmations.pop(token, None)
-                session["run_confirmations"] = confirmations
+                session[session_key] = confirmations
         except ValueError as error:
             flash(str(error), "error")
             return navigate(url_for("settings_page", tab="device" if not controller_configured(store.settings()) else "app"))
