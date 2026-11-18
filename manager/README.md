@@ -39,7 +39,7 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-镜像名为 `wecom-checkin:1.0`，容器名为 `wechat-checkin`，默认绑定宿主机 `127.0.0.1:8000`。用户自行配置 Nginx 等反向代理，通过 HTTPS 访问管理端。
+镜像名为 `wecom-checkin:1.0`，容器名为 `wecom-checkin`，默认绑定宿主机 `127.0.0.1:8000`。用户自行配置 Nginx 等反向代理，通过 HTTPS 访问管理端。
 
 已有部署首次切换到此镜像标签时，在 `manager/` 目录执行 `docker compose up -d --build manager`，构建镜像并重建容器。
 
@@ -67,7 +67,7 @@ Compose 自动加载该覆盖文件，修改端口后无需重新构建镜像。
 
 ```bash
 git pull
-docker restart wechat-checkin
+docker compose restart manager
 ```
 
 `requirements.txt` 变化时重新构建并启动：

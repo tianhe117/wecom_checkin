@@ -2,7 +2,7 @@ services:
   manager:
     build: .
     image: wecom-checkin:1.0
-    container_name: wechat-checkin
+    container_name: wecom-checkin
     restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"
